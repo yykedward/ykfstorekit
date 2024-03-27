@@ -1,4 +1,5 @@
 
+import 'dart:async';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 class _YKStoreKitCurrentModel {
@@ -13,38 +14,80 @@ class _YKStoreKitCurrentModel {
 
 }
 
-mixin YKStoreKitMainProtocol {
+class YKStoreKitMainController {
 
-  Future<bool> checkOrder(String protocol, String orderId, String customerId);
+  final Future<bool> Function(String protocol, String orderId, String customerId) checkOrderCallBack;
 
+  const YKStoreKitMainController(this.checkOrderCallBack);
 }
 
-abstract class YKStoreKitLogController {
+class YKStoreKitLogController {
 
-  log(String message);
+  void Function(String message)? logCallBack;
 
-  error(String error);
+  void Function(String errorMessage)? errorCallBack;
+
+  YKStoreKitLogController({this.logCallBack, this.errorCallBack});
 }
 
 class YKStoreKit {
 
   static YKStoreKit? _instance;
 
-  YKStoreKitMainProtocol? _protocol;
+  YKStoreKitMainController? _mainController;
 
   YKStoreKitLogController? _controller;
 
   _YKStoreKitCurrentModel? _currentModel;
+
+  late StreamSubscription streamSubscription;
 
   factory YKStoreKit._getInstance() {
     _instance ??= YKStoreKit._();
     return _instance!;
   }
 
-  YKStoreKit._();
+  YKStoreKit._() {
+    streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) {
 
-  static setupMainProtocol(YKStoreKitMainProtocol protocol) {
-    YKStoreKit._getInstance()._protocol = protocol;
+      event.forEach((PurchaseDetails purchaseDetails) async {
+        if (purchaseDetails.status == PurchaseStatus.pending) {
+          // 购买凭证创建中
+
+        } else {
+          if (purchaseDetails.status == PurchaseStatus.error) {
+            // 购买失败
+          } else if (purchaseDetails.status == PurchaseStatus.purchased || purchaseDetails.status == PurchaseStatus.restored) {
+            // 购买成功
+
+            try {
+
+              final result = await _mainController?.checkOrderCallBack("",_currentModel!.orderId,_currentModel!.customId) ?? false;
+              if (result) {
+                if (purchaseDetails.pendingCompletePurchase) {
+                  //核销商品
+                  await InAppPurchase.instance.completePurchase(purchaseDetails);
+                }
+              }
+
+            } catch (e) {
+              _error(e.toString());
+            } finally {
+
+            }
+          }
+
+
+        }
+      });
+    });
+  }
+
+  static setupMainProtocol(YKStoreKitMainController mainController) {
+    //禁止重复操作
+    if (YKStoreKit._getInstance()._mainController != null) {
+      YKStoreKit._getInstance()._mainController = mainController;
+    }
   }
 
   static order(String orderId, String customerId, {YKStoreKitLogController? controller}) {
@@ -70,12 +113,32 @@ class YKStoreKit {
 
       if (currentDetail != null) {
         _currentModel!.currentDetail = currentDetail;
+        _toPay();
+      } else {
+        _error("找不到付费点");
       }
 
+
     } else {
-      _controller?.error(response.error!.message);
+      _error(response.error!.message);
     }
 
+  }
+
+  _toPay() {
+    ProductDetails details = _currentModel!.currentDetail!;
+    final PurchaseParam purchaseParam = PurchaseParam(productDetails: details);
+    InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
+  }
+
+  _log(String message) {
+
+    _controller?.logCallBack?(message);
+  }
+
+  _error(String error) {
+    
+    _controller?.errorCallBack?(error);
   }
 
   _saveCache(_YKStoreKitCurrentModel model) {
