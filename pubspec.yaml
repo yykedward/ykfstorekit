@@ -31,10 +31,6 @@ dependencies:
   in_app_purchase: ^3.1.10
   path_provider: ^2.0.15
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^3.0.0
 
 
 # For information on the generic Dart part of this file, see the
