@@ -1,37 +1,83 @@
-
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:path_provider/path_provider.dart';
+
+class YKStorePayDetail {
+  
+  String order = "";
+  
+}
 
 class _YKStoreKitCurrentModel {
-
   String orderId = "";
 
   String customId = "";
 
-  late ProductDetails currentDetail;
+  late PurchaseDetails currentDetail;
 
   _YKStoreKitCurrentModel({required this.orderId, required this.customId});
 
+  Map<String, dynamic> tojson() {
+    return {
+      "orderId": orderId,
+      "customId": customId,
+      "currentDetail": {
+        "purchaseID": currentDetail.purchaseID,
+        "productID": currentDetail.productID,
+        "verificationData": {
+          "localVerificationData": currentDetail.verificationData.localVerificationData,
+          "serverVerificationData": currentDetail.verificationData.serverVerificationData,
+          "source": currentDetail.verificationData.source,
+        },
+        "transactionDate": currentDetail.transactionDate,
+        "status": currentDetail.status.name,
+        "pendingCompletePurchase": currentDetail.pendingCompletePurchase,
+      }
+    };
+  }
+
+  static _YKStoreKitCurrentModel make(Map<String, dynamic> dic) {
+    _YKStoreKitCurrentModel model = _YKStoreKitCurrentModel(orderId: dic["orderId"], customId: dic["customId"]);
+    Map<String, dynamic> currentDetail = dic["currentDetail"];
+    Map<String, dynamic> verificationData = currentDetail["verificationData"];
+    model.currentDetail = PurchaseDetails(
+      productID: currentDetail["productID"] ?? "",
+      purchaseID: currentDetail["purchaseID"],
+      verificationData: PurchaseVerificationData(
+          localVerificationData: verificationData["localVerificationData"],
+          serverVerificationData: verificationData["serverVerificationData"],
+          source: verificationData["source"]),
+      transactionDate: currentDetail["transactionDate"],
+      status: PurchaseStatus.values.firstWhere((e) => e.name == json, orElse: () => PurchaseStatus.error),
+    );
+    model.currentDetail.pendingCompletePurchase = currentDetail["pendingCompletePurchase"];
+
+    return model;
+  }
 }
 
 class YKStoreKitMainController {
-
-  final Future<bool> Function(String protocol, String orderId, String customerId) checkOrderCallBack;
+  final Function(String protocol, String applePayId, String customerId, Function(bool) finishCallBack) checkOrderCallBack;
 
   const YKStoreKitMainController(this.checkOrderCallBack);
 }
 
 class YKStoreKitLogController {
-
   void Function(String message)? logCallBack;
 
   void Function(String errorMessage)? errorCallBack;
 
-  YKStoreKitLogController({this.logCallBack, this.errorCallBack});
+  void Function()? loading;
+
+  void Function()? disLoading;
+
+  YKStoreKitLogController({this.logCallBack, this.errorCallBack, this.loading, this.disLoading});
 }
 
 class YKStoreKit {
-
   static YKStoreKit? _instance;
 
   YKStoreKitMainController? _mainController;
@@ -42,114 +88,275 @@ class YKStoreKit {
 
   late StreamSubscription streamSubscription;
 
+  String? _savePath = null;
+
   factory YKStoreKit._getInstance() {
     _instance ??= YKStoreKit._();
     return _instance!;
   }
 
-  YKStoreKit._() {
-    streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) {
+  YKStoreKit._();
 
+  static setupWithMainController(YKStoreKitMainController mainController) async {
+    final cacheModels = await YKStoreKit._getInstance()._getModels();
+
+    for (final model in cacheModels) {
+      String orderId = model.orderId;
+      String customerId = model.customId;
+      String vantData = model.currentDetail.verificationData.serverVerificationData;
+
+      mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
+        if (isFinish) {
+          YKStoreKit._getInstance()._deleCache(orderId);
+          YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+        } else {
+          YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+        }
+      });
+    }
+
+    //禁止重复操作
+    if (YKStoreKit
+        ._getInstance()
+        ._mainController != null) {
+      YKStoreKit
+          ._getInstance()
+          ._mainController = mainController;
+    }
+
+    //设置支付内容
+    final abailable = await InAppPurchase.instance.isAvailable();
+    if (!abailable) {}
+    YKStoreKit
+        ._getInstance()
+        .streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) {
       event.forEach((PurchaseDetails purchaseDetails) async {
         if (purchaseDetails.status == PurchaseStatus.pending) {
           // 购买凭证创建中
-
+          String orderId = purchaseDetails.productID;
+          YKStoreKit._getInstance()._log("正在支付中:$orderId");
         } else {
           if (purchaseDetails.status == PurchaseStatus.error) {
             // 购买失败
+            YKStoreKit._getInstance()._log(purchaseDetails.error?.message ?? "");
+          } else if (purchaseDetails.status == PurchaseStatus.canceled) {
+            //取消
+            YKStoreKit._getInstance()._log("支付已取消 ${purchaseDetails.productID}");
           } else if (purchaseDetails.status == PurchaseStatus.purchased || purchaseDetails.status == PurchaseStatus.restored) {
             // 购买成功
 
             try {
-
-              final result = await _mainController?.checkOrderCallBack("",_currentModel!.orderId,_currentModel!.customId) ?? false;
-              if (result) {
-                if (purchaseDetails.pendingCompletePurchase) {
-                  //核销商品
-                  await InAppPurchase.instance.completePurchase(purchaseDetails);
-                }
+              if (YKStoreKit
+                  ._getInstance()
+                  ._currentModel != null) {
+                //MARK: 购买凭证保存到本地
+                YKStoreKit
+                    ._getInstance()
+                    ._currentModel!
+                    .currentDetail = purchaseDetails;
+                await YKStoreKit._getInstance()._saveCache(YKStoreKit
+                    ._getInstance()
+                    ._currentModel!);
               }
 
-            } catch (e) {
-              _error(e.toString());
-            } finally {
+              String orderId = purchaseDetails.productID;
+              String customerId = YKStoreKit
+                  ._getInstance()
+                  ._currentModel
+                  ?.customId ?? "";
+              String vantData = purchaseDetails.verificationData.serverVerificationData;
 
-            }
+
+              mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
+                if (isFinish) {
+                  YKStoreKit._getInstance()._deleCache(orderId);
+                  YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+                } else {
+                  YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+                }
+              });
+            } catch (e) {
+              YKStoreKit._getInstance()._error(e.toString());
+            } finally {}
           }
 
-
+          //MARK: 统一都做完成操作
+          if (purchaseDetails.pendingCompletePurchase) {
+            //核销商品
+            await InAppPurchase.instance.completePurchase(purchaseDetails);
+            YKStoreKit
+                ._getInstance()
+                ._currentModel = null;
+            YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
+          }
+          YKStoreKit._getInstance()._disloading();
         }
       });
     });
-  }
-
-  static setupMainProtocol(YKStoreKitMainController mainController) {
-    //禁止重复操作
-    if (YKStoreKit._getInstance()._mainController != null) {
-      YKStoreKit._getInstance()._mainController = mainController;
-    }
   }
 
   static order(String orderId, String customerId, {YKStoreKitLogController? controller}) {
     YKStoreKit._getInstance()._order(orderId, customerId, controller);
   }
 
-
   _order(String orderId, String customerId, YKStoreKitLogController? controller) async {
-    _controller = controller;
-    _currentModel = _YKStoreKitCurrentModel(orderId: orderId, customId: customerId);
-    Set<String> kIds = <String>{};
-    kIds.add(orderId);
-    final ProductDetailsResponse response = await InAppPurchase.instance.queryProductDetails(kIds);
-
-    if (response.error != null) {
-      ProductDetails? currentDetail;
-
-      for (ProductDetails detail in response.productDetails) {
-        if (detail.id == orderId) {
-          currentDetail = detail;
-        }
+    if (_currentModel != null) {
+      if (controller?.errorCallBack != null) {
+        controller?.errorCallBack!("上一单支付还未完成");
       }
-
-      if (currentDetail != null) {
-        _currentModel!.currentDetail = currentDetail;
-        _toPay();
-      } else {
-        _error("找不到付费点");
-      }
-
-
-    } else {
-      _error(response.error!.message);
+      return;
     }
 
-  }
+    _controller = controller;
+    _loading();
+    try {
+      Set<String> kIds = <String>{orderId};
+      final ProductDetailsResponse response = await InAppPurchase.instance.queryProductDetails(kIds);
 
-  _toPay() {
-    ProductDetails details = _currentModel!.currentDetail!;
-    final PurchaseParam purchaseParam = PurchaseParam(productDetails: details);
-    InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
+      if (response.error == null) {
+        ProductDetails? currentDetail;
+
+        for (ProductDetails detail in response.productDetails) {
+          if (detail.id == orderId) {
+            currentDetail = detail;
+          }
+        }
+
+        if (currentDetail != null) {
+          // 找到支付点：开启支付
+          _currentModel = _YKStoreKitCurrentModel(orderId: orderId, customId: customerId);
+          final PurchaseParam purchaseParam = PurchaseParam(productDetails: currentDetail!);
+          InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
+        } else {
+          _error("找不到付费点");
+        }
+      } else {
+        _error(response.error!.message);
+      }
+    } catch (e) {
+      _error("产生支付错误 ${e.toString()}");
+    }
   }
 
   _log(String message) {
-
-    _controller?.logCallBack?(message);
+    if (_controller?.logCallBack != null) {
+      _controller?.logCallBack!(message);
+    }
   }
 
   _error(String error) {
-    
-    _controller?.errorCallBack?(error);
+    if (_controller?.errorCallBack != null) {
+      _controller?.errorCallBack!(error);
+    }
   }
 
-  _saveCache(_YKStoreKitCurrentModel model) {
-
+  _loading() {
+    if (_controller?.loading != null) {
+      _controller?.loading!();
+    }
   }
 
-  _deleCache(String customerId) {
-
+  _disloading() {
+    if (_controller?.disLoading != null) {
+      _controller?.disLoading!();
+    }
   }
 
-  _YKStoreKitCurrentModel getModel(String customerId) {
-    return _YKStoreKitCurrentModel(orderId: "", customId: "");
+  _saveCache(_YKStoreKitCurrentModel model) async {
+    final file = await _getCacheFile();
+
+    if (file != null) {
+      final fileData = await file.readAsBytes();
+      final data = utf8.decode(fileData as List<int>);
+      var json_data = [];
+      if (data.isNotEmpty) {
+        json_data = jsonDecode(data);
+      }
+
+      json_data.add(model.tojson());
+
+      String finalFinal = json.encode(json_data);
+
+      file.writeAsBytes(utf8.encode(finalFinal));
+    }
+  }
+
+  _deleCache(String applePayId) async {
+    final file = await _getCacheFile();
+
+    if (file != null) {
+      final fileData = await file.readAsBytes();
+      final data = utf8.decode(fileData as List<int>);
+      var json_data = [];
+      if (data.isNotEmpty) {
+        json_data = jsonDecode(data);
+      }
+      json_data.removeWhere((element) => (element["orderId"] == applePayId));
+
+      String finalFinal = json.encode(json_data);
+
+      file.writeAsBytes(utf8.encode(finalFinal));
+    }
+  }
+
+  Future<List<_YKStoreKitCurrentModel>> _getModels() async {
+    final file = await _getCacheFile();
+
+    if (file != null) {
+      final fileData = await file.readAsBytes();
+      final data = utf8.decode(fileData as List<int>);
+      var json_data = [];
+      if (data.isNotEmpty) {
+        json_data = jsonDecode(data);
+      }
+
+      final models = List<_YKStoreKitCurrentModel>.from(json_data.map((e) => _YKStoreKitCurrentModel.make(e)));
+
+      return models;
+    }
+
+    return [];
+  }
+
+  Future<File?> _getCacheFile() async {
+    try {
+      var path = "";
+      if (Platform.isAndroid) {
+        path = ((await getExternalCacheDirectories())?.first)?.path ?? "";
+      } else if (Platform.isIOS) {
+        path = (await getApplicationDocumentsDirectory()).path;
+      }
+
+      final folderPath = "$path/YKF";
+      final dir = Directory(folderPath);
+
+      final isExists = await dir.exists();
+
+      if (!isExists) {
+        await dir.create();
+      }
+
+      final storeFolderPath = "$folderPath/Store";
+      final storeDir = Directory(storeFolderPath);
+
+      final storeDirExists = await storeDir.exists();
+      if (!storeDirExists) {
+        await storeDir.create();
+      }
+
+      final file = await File("${storeDir.path}/store_cache");
+      final fileExe = await file.exists();
+
+      if (!fileExe) {
+        file.writeAsBytes(utf8.encode("[]"));
+      }
+
+      _log("创建文件成功: ${file.path}");
+      return file;
+    } catch (e) {
+      debugPrint("创建失败:${e.toString()}");
+
+      return null;
+    }
   }
 }
