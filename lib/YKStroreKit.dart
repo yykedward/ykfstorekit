@@ -6,9 +6,52 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:path_provider/path_provider.dart';
 
 class YKStorePayDetail {
-  
-  String order = "";
-  
+  String _id = "";
+  String _title = "";
+  String _description = "";
+  String _price = "";
+  double _rawPrice = 0;
+  String _currencyCode = "";
+  String _currencySymbol = "";
+
+  static YKStorePayDetail _make(ProductDetails details) {
+    YKStorePayDetail model = YKStorePayDetail();
+    model._id = details.id;
+    model._title = details.title;
+    model._description = details.description;
+    model._price = details.price;
+    model._rawPrice = details.rawPrice;
+    model._currencyCode = details.currencyCode;
+    model._currencySymbol = details.currencySymbol;
+
+    return model;
+  }
+
+  ProductDetails _todetail() {
+    return ProductDetails(
+      id: id,
+      title: title,
+      description: description,
+      price: price,
+      rawPrice: rawPrice,
+      currencyCode: currencyCode,
+      currencySymbol: currencySymbol,
+    );
+  }
+
+  String get id => _id;
+
+  String get title => _title;
+
+  String get description => _description;
+
+  String get price => _price;
+
+  double get rawPrice => _rawPrice;
+
+  String get currencyCode => _currencyCode;
+
+  String get currencySymbol => _currencySymbol;
 }
 
 class _YKStoreKitCurrentModel {
@@ -166,7 +209,6 @@ class YKStoreKit {
                   ?.customId ?? "";
               String vantData = purchaseDetails.verificationData.serverVerificationData;
 
-
               mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
                 if (isFinish) {
                   YKStoreKit._getInstance()._deleCache(orderId);
@@ -197,6 +239,24 @@ class YKStoreKit {
 
   static order(String orderId, String customerId, {YKStoreKitLogController? controller}) {
     YKStoreKit._getInstance()._order(orderId, customerId, controller);
+  }
+
+  static Future<List<YKStorePayDetail>> getDetail(List<String> orderIds) async {
+    Set<String> kIds = <String>{};
+
+    for (String order in orderIds) {
+      kIds.add(order);
+    }
+
+    final ProductDetailsResponse response = await InAppPurchase.instance.queryProductDetails(kIds);
+
+    if (response.error == null) {
+      var list = List<YKStorePayDetail>.from(response.productDetails.map((e) => YKStorePayDetail._make(e)));
+
+      return list;
+    }
+
+    return [];
   }
 
   _order(String orderId, String customerId, YKStoreKitLogController? controller) async {
