@@ -108,7 +108,7 @@ class YKStoreKitMainController {
   const YKStoreKitMainController(this.checkOrderCallBack);
 }
 
-class YKStoreKitLogController {
+class YKStoreKitLogDelegate {
   void Function(String message)? logCallBack;
 
   void Function(String errorMessage)? errorCallBack;
@@ -117,7 +117,7 @@ class YKStoreKitLogController {
 
   void Function()? disLoading;
 
-  YKStoreKitLogController({this.logCallBack, this.errorCallBack, this.loading, this.disLoading});
+  YKStoreKitLogDelegate({this.logCallBack, this.errorCallBack, this.loading, this.disLoading});
 }
 
 class YKStoreKit {
@@ -125,7 +125,7 @@ class YKStoreKit {
 
   YKStoreKitMainController? _mainController;
 
-  YKStoreKitLogController? _controller;
+  YKStoreKitLogDelegate? _delegate;
 
   _YKStoreKitCurrentModel? _currentModel;
 
@@ -237,8 +237,8 @@ class YKStoreKit {
     });
   }
 
-  static order(String orderId, String customerId, {YKStoreKitLogController? controller}) {
-    YKStoreKit._getInstance()._order(orderId, customerId, controller);
+  static order(String orderId, String customerId, {YKStoreKitLogDelegate? delegate}) {
+    YKStoreKit._getInstance()._order(orderId, customerId, delegate);
   }
 
   static Future<List<YKStorePayDetail>> getDetail(List<String> orderIds) async {
@@ -259,15 +259,15 @@ class YKStoreKit {
     return [];
   }
 
-  _order(String orderId, String customerId, YKStoreKitLogController? controller) async {
+  _order(String orderId, String customerId, YKStoreKitLogDelegate? delegate) async {
     if (_currentModel != null) {
-      if (controller?.errorCallBack != null) {
-        controller?.errorCallBack!("上一单支付还未完成");
+      if (delegate?.errorCallBack != null) {
+        delegate?.errorCallBack!("上一单支付还未完成");
       }
       return;
     }
 
-    _controller = controller;
+    _delegate = delegate;
     _loading();
     try {
       Set<String> kIds = <String>{orderId};
@@ -299,26 +299,26 @@ class YKStoreKit {
   }
 
   _log(String message) {
-    if (_controller?.logCallBack != null) {
-      _controller?.logCallBack!(message);
+    if (_delegate?.logCallBack != null) {
+      _delegate?.logCallBack!(message);
     }
   }
 
   _error(String error) {
-    if (_controller?.errorCallBack != null) {
-      _controller?.errorCallBack!(error);
+    if (_delegate?.errorCallBack != null) {
+      _delegate?.errorCallBack!(error);
     }
   }
 
   _loading() {
-    if (_controller?.loading != null) {
-      _controller?.loading!();
+    if (_delegate?.loading != null) {
+      _delegate?.loading!();
     }
   }
 
   _disloading() {
-    if (_controller?.disLoading != null) {
-      _controller?.disLoading!();
+    if (_delegate?.disLoading != null) {
+      _delegate?.disLoading!();
     }
   }
 
