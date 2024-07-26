@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'package:path_provider/path_provider.dart';
 
 class YKStorePayDetail {
@@ -257,6 +258,10 @@ class YKStoreKit {
     }
 
     return [];
+  }
+
+  static Future<void> requestReview() {
+    return InAppReview.instance.requestReview();
   }
 
   _order(String orderId, String customerId, YKStoreKitLogDelegate? delegate) async {
