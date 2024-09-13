@@ -104,7 +104,7 @@ class _YKStoreKitCurrentModel {
 }
 
 class YKStoreKitMainController {
-  final Function(String protocol, String applePayId, String customerId, Function(bool) finishCallBack) checkOrderCallBack;
+  final Future Function(String protocol, String applePayId, String customerId, Function(bool) finishCallBack) checkOrderCallBack;
 
   const YKStoreKitMainController(this.checkOrderCallBack);
 }
@@ -149,7 +149,7 @@ class YKStoreKit {
       String customerId = model.customId;
       String vantData = model.currentDetail.verificationData.serverVerificationData;
 
-      mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
+      await mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
         if (isFinish) {
           YKStoreKit._getInstance()._deleCache(orderId);
           YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
@@ -210,7 +210,7 @@ class YKStoreKit {
                   ?.customId ?? "";
               String vantData = purchaseDetails.verificationData.serverVerificationData;
 
-              mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
+              await mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
                 if (isFinish) {
                   YKStoreKit._getInstance()._deleCache(orderId);
                   YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
