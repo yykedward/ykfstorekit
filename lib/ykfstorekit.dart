@@ -103,10 +103,10 @@ class _YKStoreKitCurrentModel {
   }
 }
 
-class YKStoreKitMainController {
-  final Future Function(String protocol, String applePayId, String customerId, Function(bool) finishCallBack) checkOrderCallBack;
+class _YKStoreKitMainController {
+  final Future<bool> Function(String protocol, String applePayId, String customerId) checkOrderCallBack;
 
-  const YKStoreKitMainController(this.checkOrderCallBack);
+  const _YKStoreKitMainController(this.checkOrderCallBack);
 }
 
 class YKStoreKitLogDelegate {
@@ -114,9 +114,9 @@ class YKStoreKitLogDelegate {
 
   void Function(String errorMessage)? errorCallBack;
 
-  void Function()? loading;
+  Future<dynamic> Function()? loading;
 
-  void Function()? disLoading;
+  Future<void> Function()? disLoading;
 
   YKStoreKitLogDelegate({this.logCallBack, this.errorCallBack, this.loading, this.disLoading});
 }
@@ -124,7 +124,7 @@ class YKStoreKitLogDelegate {
 class YKStoreKit {
   static YKStoreKit? _instance;
 
-  YKStoreKitMainController? _mainController;
+  _YKStoreKitMainController? _mainController;
 
   YKStoreKitLogDelegate? _delegate;
 
@@ -141,23 +141,8 @@ class YKStoreKit {
 
   YKStoreKit._();
 
-  static setupWithMainController(YKStoreKitMainController mainController) async {
-    final cacheModels = await YKStoreKit._getInstance()._getModels();
-
-    for (final model in cacheModels) {
-      String orderId = model.orderId;
-      String customerId = model.customId;
-      String vantData = model.currentDetail.verificationData.serverVerificationData;
-
-      await mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
-        if (isFinish) {
-          YKStoreKit._getInstance()._deleCache(orderId);
-          YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
-        } else {
-          YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
-        }
-      });
-    }
+  static setupCheckOrder(Future<bool> Function(String protocol, String applePayId, String customerId) callBack) async {
+    _YKStoreKitMainController mainController = _YKStoreKitMainController(callBack);
 
     //禁止重复操作
     if (YKStoreKit
@@ -166,6 +151,23 @@ class YKStoreKit {
       YKStoreKit
           ._getInstance()
           ._mainController = mainController;
+    }
+
+    final cacheModels = await YKStoreKit._getInstance()._getModels();
+
+
+    for (final model in cacheModels) {
+      String orderId = model.orderId;
+      String customerId = model.customId;
+      String vantData = model.currentDetail.verificationData.serverVerificationData;
+
+      final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
+      if (isFinish) {
+        YKStoreKit._getInstance()._deleCache(orderId);
+        YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+      } else {
+        YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+      }
     }
 
     //设置支付内容
@@ -210,15 +212,16 @@ class YKStoreKit {
                   ?.customId ?? "";
               String vantData = purchaseDetails.verificationData.serverVerificationData;
 
-              await mainController.checkOrderCallBack(vantData, orderId, customerId, (isFinish) async {
-                if (isFinish) {
-                  YKStoreKit._getInstance()._deleCache(orderId);
-                  YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
-                } else {
-                  YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
-                }
-              });
+              await YKStoreKit._getInstance()._disloading();
+              final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
+              if (isFinish) {
+                YKStoreKit._getInstance()._deleCache(orderId);
+                YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+              } else {
+                YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+              }
             } catch (e) {
+              YKStoreKit._getInstance()._disloading();
               YKStoreKit._getInstance()._error(e.toString());
             } finally {}
           }
@@ -232,7 +235,6 @@ class YKStoreKit {
                 ._currentModel = null;
             YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
           }
-          YKStoreKit._getInstance()._disloading();
         }
       });
     });
@@ -315,15 +317,15 @@ class YKStoreKit {
     }
   }
 
-  _loading() {
+  Future<dynamic> _loading() async {
     if (_delegate?.loading != null) {
-      _delegate?.loading!();
+      return _delegate?.loading!();
     }
   }
 
-  _disloading() {
+  Future<void> _disloading() async {
     if (_delegate?.disLoading != null) {
-      _delegate?.disLoading!();
+      return _delegate?.disLoading!();
     }
   }
 
