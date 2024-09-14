@@ -141,7 +141,7 @@ class YKStoreKit {
 
   YKStoreKit._();
 
-  static setupCheckOrder(Future<bool> Function(String protocol, String applePayId, String customerId) callBack) async {
+  static setupCheckOrder({required Future<bool> Function(String protocol, String applePayId, String customerId) callBack}) async {
     _YKStoreKitMainController mainController = _YKStoreKitMainController(callBack);
 
     //禁止重复操作
