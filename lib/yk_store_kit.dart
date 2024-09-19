@@ -251,13 +251,15 @@ class YKStoreKit {
       kIds.add(order);
     }
 
-    final ProductDetailsResponse response = await InAppPurchase.instance.queryProductDetails(kIds);
+    try {
+      final ProductDetailsResponse response = await InAppPurchase.instance.queryProductDetails(kIds);
 
-    if (response.error == null) {
-      var list = List<YKStorePayDetail>.from(response.productDetails.map((e) => YKStorePayDetail._make(e)));
+      if (response.error == null) {
+        var list = List<YKStorePayDetail>.from(response.productDetails.map((e) => YKStorePayDetail._make(e)));
 
-      return list;
-    }
+        return list;
+      }
+    } catch (e) {}
 
     return [];
   }
