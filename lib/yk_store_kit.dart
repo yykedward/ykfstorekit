@@ -132,8 +132,6 @@ class YKStoreKit {
 
   late StreamSubscription streamSubscription;
 
-  String? _savePath = null;
-
   factory YKStoreKit._getInstance() {
     _instance ??= YKStoreKit._();
     return _instance!;
@@ -240,8 +238,12 @@ class YKStoreKit {
     });
   }
 
-  static order(String orderId, String customerId, {YKStoreKitLogDelegate? delegate}) {
-    YKStoreKit._getInstance()._order(orderId, customerId, delegate);
+  static setupDelegate({required YKStoreKitLogDelegate delegate}) {
+    YKStoreKit._getInstance()._delegate = delegate;
+  }
+
+  static order({required String orderId, required String customerId}) {
+    YKStoreKit._getInstance()._order(orderId, customerId);
   }
 
   static Future<List<YKStorePayDetail>> getDetail(List<String> orderIds) async {
@@ -268,15 +270,14 @@ class YKStoreKit {
     return InAppReview.instance.requestReview();
   }
 
-  _order(String orderId, String customerId, YKStoreKitLogDelegate? delegate) async {
+  _order(String orderId, String customerId) async {
     if (_currentModel != null) {
-      if (delegate?.errorCallBack != null) {
-        delegate?.errorCallBack!("上一单支付还未完成");
+      if (_delegate?.errorCallBack != null) {
+        _delegate?.errorCallBack!("上一单支付还未完成");
       }
       return;
     }
 
-    _delegate = delegate;
     _loading();
     try {
       Set<String> kIds = <String>{orderId};
