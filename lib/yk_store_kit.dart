@@ -157,11 +157,11 @@ class YKStoreKit {
     for (final model in cacheModels) {
       String orderId = model.orderId;
       String customerId = model.customId;
-      String vantData = model.currentDetail.verificationData.serverVerificationData;
+      String verificationData = model.currentDetail.verificationData.serverVerificationData;
 
-      final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
+      final isFinish = await mainController.checkOrderCallBack(verificationData, orderId, customerId);
       if (isFinish) {
-        YKStoreKit._getInstance()._deleCache(orderId);
+        YKStoreKit._getInstance()._deleteCache(orderId);
         YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
       } else {
         YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
@@ -169,12 +169,13 @@ class YKStoreKit {
     }
 
     //设置支付内容
-    final abailable = await InAppPurchase.instance.isAvailable();
-    if (!abailable) {}
+    final available = await InAppPurchase.instance.isAvailable();
+    if (!available) {}
     YKStoreKit
         ._getInstance()
-        .streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) {
-      event.forEach((PurchaseDetails purchaseDetails) async {
+        .streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) async {
+
+      for (final purchaseDetails in event) {
         if (purchaseDetails.status == PurchaseStatus.pending) {
           // 购买凭证创建中
           String orderId = purchaseDetails.productID;
@@ -213,7 +214,7 @@ class YKStoreKit {
               await YKStoreKit._getInstance()._disloading();
               final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
               if (isFinish) {
-                YKStoreKit._getInstance()._deleCache(orderId);
+                YKStoreKit._getInstance()._deleteCache(orderId);
                 YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
               } else {
                 YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
@@ -234,7 +235,7 @@ class YKStoreKit {
             YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
           }
         }
-      });
+      }
     });
   }
 
@@ -243,7 +244,11 @@ class YKStoreKit {
   }
 
   static order({required String orderId, required String customerId}) {
-    YKStoreKit._getInstance()._order(orderId, customerId);
+    YKStoreKit._getInstance()._order(orderId, customerId, false);
+  }
+
+  static subscriptionOrder({required String subscriptionOrderId, required String customerId}) async {
+    YKStoreKit._getInstance()._order(subscriptionOrderId, customerId, true);
   }
 
   static Future<List<YKStorePayDetail>> getDetail(List<String> orderIds) async {
@@ -270,7 +275,7 @@ class YKStoreKit {
     return InAppReview.instance.requestReview();
   }
 
-  _order(String orderId, String customerId) async {
+  _order(String orderId, String customerId, bool isNon) async {
     if (_currentModel != null) {
       if (_delegate?.errorCallBack != null) {
         _delegate?.errorCallBack!("上一单支付还未完成");
@@ -296,7 +301,11 @@ class YKStoreKit {
           // 找到支付点：开启支付
           _currentModel = _YKStoreKitCurrentModel(orderId: orderId, customId: customerId);
           final PurchaseParam purchaseParam = PurchaseParam(productDetails: currentDetail!);
-          InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
+          if (isNon) {
+            InAppPurchase.instance.buyNonConsumable(purchaseParam: purchaseParam);
+          } else {
+            InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
+          }
         } else {
           _error("找不到付费点");
         }
@@ -351,7 +360,7 @@ class YKStoreKit {
     }
   }
 
-  _deleCache(String applePayId) async {
+  _deleteCache(String applePayId) async {
     final file = await _getCacheFile();
 
     if (file != null) {
