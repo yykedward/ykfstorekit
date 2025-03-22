@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_review/in_app_review.dart';
-import 'package:yk_flutter_core/yk_file_manager.dart.dart';
+import 'package:yk_flutter_core/yk_file_manager.dart';
 
 class YKStorePayDetail {
   String _id = "";
