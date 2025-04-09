@@ -15,9 +15,9 @@ description: "YKFlutterStoreKit"
 # This version is used _only_ for the Runner app, which is used if you just do
 # a `flutter run` or a `flutter make-host-app-editable`. It has no impact
 # on any other native host app that you embed your Flutter project into.
-version: 1.0.1
-homepage: https://github.com/541278903
-repository: https://github.com/541278903/ykfstorekit.git
+version: 1.0.2
+homepage: https://github.com/yykedward
+repository: https://github.com/yykedward/ykfstorekit.git
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -31,7 +31,7 @@ dependencies:
   in_app_purchase: ^3.2.0
   in_app_review: ^2.0.9
   path_provider: ^2.0.15
-  yk_flutter_core: ^ 0.0.1
+  yk_flutter_core: ^0.0.2
 
 
 

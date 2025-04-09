@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_review/in_app_review.dart';
-import 'package:yk_flutter_core/yk_file_manager.dart';
+import 'package:yk_flutter_core/yk_flutter_core.dart';
 
 class YKStorePayDetail {
   String _id = "";
@@ -342,91 +343,79 @@ class YKStoreKit {
   }
 
   _saveCache(_YKStoreKitCurrentModel model) async {
-    final file = await _getCacheFile();
+    final path = await _getCacheFile();
 
-    if (file != null) {
-      final fileData = await file.readAsBytes();
-      final data = utf8.decode(fileData as List<int>);
-      var json_data = [];
-      if (data.isNotEmpty) {
-        json_data = jsonDecode(data);
-      }
+    if (path != null) {
+      try {
+        final fileData = await YkFileManager.getData(path: path);
 
-      json_data.add(model.tojson());
+        final data = utf8.decode(fileData ?? []);
+        var json_data = [];
+        if (data.isNotEmpty) {
+          json_data = jsonDecode(data);
+        }
 
-      String finalFinal = json.encode(json_data);
+        json_data.add(model.tojson());
 
-      file.writeAsBytes(utf8.encode(finalFinal));
+        String finalFinal = json.encode(json_data);
+
+        YkFileManager.save(bytes: Int8List.fromList(utf8.encode(finalFinal)), filePath: path);
+      } catch (e) {}
     }
   }
 
   _deleteCache(String applePayId) async {
-    final file = await _getCacheFile();
+    final path = await _getCacheFile();
 
-    if (file != null) {
-      final fileData = await file.readAsBytes();
-      final data = utf8.decode(fileData as List<int>);
-      var json_data = [];
-      if (data.isNotEmpty) {
-        json_data = jsonDecode(data);
-      }
-      json_data.removeWhere((element) => (element["orderId"] == applePayId));
+    if (path != null) {
+      try {
+        final fileData = await YkFileManager.getData(path: path);
 
-      String finalFinal = json.encode(json_data);
+        final data = utf8.decode(fileData as List<int>);
 
-      file.writeAsBytes(utf8.encode(finalFinal));
+        var json_data = [];
+        if (data.isNotEmpty) {
+          json_data = jsonDecode(data);
+        }
+        json_data.removeWhere((element) => (element["orderId"] == applePayId));
+
+        String finalFinal = json.encode(json_data);
+
+        YkFileManager.save(bytes: Int8List.fromList(utf8.encode(finalFinal)), filePath: path);
+      } catch (e) {}
     }
   }
 
   Future<List<_YKStoreKitCurrentModel>> _getModels() async {
-    final file = await _getCacheFile();
+    final path = await _getCacheFile();
 
-    if (file != null) {
-      final fileData = await file.readAsBytes();
-      final data = utf8.decode(fileData as List<int>);
-      var json_data = [];
-      if (data.isNotEmpty) {
-        json_data = jsonDecode(data);
+    if (path != null) {
+      final fileData = await YkFileManager.getData(path: path);
+      if (fileData != null) {
+        final data = utf8.decode(fileData as List<int>);
+        var json_data = [];
+        if (data.isNotEmpty) {
+          json_data = jsonDecode(data);
+        }
+
+        final models = List<_YKStoreKitCurrentModel>.from(json_data.map((e) => _YKStoreKitCurrentModel.make(e)));
+
+        return models;
+      } else {
+        return [];
       }
-
-      final models = List<_YKStoreKitCurrentModel>.from(json_data.map((e) => _YKStoreKitCurrentModel.make(e)));
-
-      return models;
     }
 
     return [];
   }
 
-  Future<File?> _getCacheFile() async {
+  Future<String?> _getCacheFile() async {
     try {
       final path = await YkFileManager.getDocumentPath();
 
       final folderPath = "$path/YKF/Store/store_cache";
-      final dir = Directory(folderPath);
 
-      final isExists = await dir.exists();
-
-      if (!isExists) {
-        await dir.create();
-      }
-
-      final storeFolderPath = "$folderPath/Store";
-      final storeDir = Directory(storeFolderPath);
-
-      final storeDirExists = await storeDir.exists();
-      if (!storeDirExists) {
-        await storeDir.create();
-      }
-
-      final file = await File("${storeDir.path}/store_cache");
-      final fileExe = await file.exists();
-
-      if (!fileExe) {
-        file.writeAsBytes(utf8.encode("[]"));
-      }
-
-      _log("创建文件成功: ${file.path}");
-      return file;
+      return folderPath;
     } catch (e) {
       debugPrint("创建失败:${e.toString()}");
 
