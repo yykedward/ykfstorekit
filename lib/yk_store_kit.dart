@@ -185,12 +185,9 @@ class YKStoreKit {
             YKStoreKit._getInstance()._log("支付已取消 ${purchaseDetails.productID}");
             YKStoreKit._getInstance()._currentComplete?.complete(false);
             YKStoreKit._getInstance()._currentModel = null;
-          } else if (purchaseDetails.status == PurchaseStatus.purchased || purchaseDetails.status == PurchaseStatus.restored) {
-            // 购买成功
-
+          } else if (purchaseDetails.status == PurchaseStatus.purchased) {
             try {
               if (YKStoreKit._getInstance()._currentModel != null) {
-                //MARK: 购买凭证保存到本地
                 YKStoreKit._getInstance()._currentModel!.currentDetail = purchaseDetails;
                 await YKStoreKit._getInstance()._saveCache(YKStoreKit._getInstance()._currentModel!);
 
@@ -208,7 +205,6 @@ class YKStoreKit {
                 }
                 YKStoreKit._getInstance()._currentComplete?.complete(isFinish);
               } else {
-                /// TODO: 购买成功，但是内存缓存中并没有当前订单信息，，，，，，，，，得排查原因
                 YKStoreKit._getInstance()._currentModel =
                     _YKStoreKitCurrentModel(orderId: purchaseDetails.productID, customId: purchaseDetails.transactionDate ?? "");
 
@@ -233,14 +229,45 @@ class YKStoreKit {
               YKStoreKit._getInstance()._currentModel = null;
               YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
             }
+          } else if (purchaseDetails.status == PurchaseStatus.restored) {
+            try {
+              _YKStoreKitCurrentModel? useModel = YKStoreKit._getInstance()._currentModel;
+              if (useModel == null) {
+                final models = await YKStoreKit._getInstance()._getModels();
+                final matched = models.firstWhere(
+                  (m) => m.orderId == purchaseDetails.productID,
+                  orElse: () => _YKStoreKitCurrentModel(orderId: purchaseDetails.productID, customId: purchaseDetails.transactionDate ?? ""),
+                );
+                useModel = matched;
+              }
+
+              useModel!.currentDetail = purchaseDetails;
+              await YKStoreKit._getInstance()._saveCache(useModel!);
+
+              String orderId = purchaseDetails.productID;
+              String customerId = useModel.customId;
+              String vantData = purchaseDetails.verificationData.serverVerificationData;
+
+              final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
+              if (isFinish) {
+                YKStoreKit._getInstance()._deleteCache(orderId);
+                YKStoreKit._getInstance()._log("已恢复:OrderId:$orderId, CustomerId:$customerId");
+              } else {
+                YKStoreKit._getInstance()._error("恢复未完成:OrderId:$orderId, CustomerId:$customerId");
+              }
+              YKStoreKit._getInstance()._currentComplete?.complete(isFinish);
+            } catch (e) {
+              YKStoreKit._getInstance()._currentComplete?.complete(false);
+              YKStoreKit._getInstance()._error(e.toString());
+            } finally {
+              YKStoreKit._getInstance()._currentModel = null;
+              YKStoreKit._getInstance()._log("已恢复完成: ${purchaseDetails.productID}");
+            }
           }
 
           //MARK: 统一都做完成操作
           if (purchaseDetails.pendingCompletePurchase) {
-            //核销商品
             await InAppPurchase.instance.completePurchase(purchaseDetails);
-          } else {
-            await InAppPurchase.instance.restorePurchases();
           }
         }
       }
