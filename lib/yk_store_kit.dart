@@ -145,12 +145,8 @@ class YKStoreKit {
     _YKStoreKitMainController mainController = _YKStoreKitMainController(callBack);
 
     //禁止重复操作
-    if (YKStoreKit
-        ._getInstance()
-        ._mainController != null) {
-      YKStoreKit
-          ._getInstance()
-          ._mainController = mainController;
+    if (YKStoreKit._getInstance()._mainController != null) {
+      YKStoreKit._getInstance()._mainController = mainController;
     }
 
     final cacheModels = await YKStoreKit._getInstance()._getModels();
@@ -172,9 +168,7 @@ class YKStoreKit {
     //设置支付内容
     final available = await InAppPurchase.instance.isAvailable();
     if (!available) {}
-    YKStoreKit
-        ._getInstance()
-        .streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) async {
+    YKStoreKit._getInstance().streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) async {
       for (final purchaseDetails in event) {
         if (purchaseDetails.status == PurchaseStatus.pending) {
           // 购买凭证创建中
@@ -184,44 +178,24 @@ class YKStoreKit {
           if (purchaseDetails.status == PurchaseStatus.error) {
             // 购买失败
             YKStoreKit._getInstance()._log(purchaseDetails.error?.message ?? "");
-            YKStoreKit
-                ._getInstance()
-                ._currentComplete
-                ?.complete(false);
-            YKStoreKit
-                ._getInstance()
-                ._currentModel = null;
+            YKStoreKit._getInstance()._currentComplete?.complete(false);
+            YKStoreKit._getInstance()._currentModel = null;
           } else if (purchaseDetails.status == PurchaseStatus.canceled) {
             //取消
             YKStoreKit._getInstance()._log("支付已取消 ${purchaseDetails.productID}");
-            YKStoreKit
-                ._getInstance()
-                ._currentComplete
-                ?.complete(false);
-            YKStoreKit
-                ._getInstance()
-                ._currentModel = null;
+            YKStoreKit._getInstance()._currentComplete?.complete(false);
+            YKStoreKit._getInstance()._currentModel = null;
           } else if (purchaseDetails.status == PurchaseStatus.purchased || purchaseDetails.status == PurchaseStatus.restored) {
             // 购买成功
 
             try {
-              if (YKStoreKit
-                  ._getInstance()
-                  ._currentModel != null) {
+              if (YKStoreKit._getInstance()._currentModel != null) {
                 //MARK: 购买凭证保存到本地
-                YKStoreKit
-                    ._getInstance()
-                    ._currentModel!
-                    .currentDetail = purchaseDetails;
-                await YKStoreKit._getInstance()._saveCache(YKStoreKit
-                    ._getInstance()
-                    ._currentModel!);
+                YKStoreKit._getInstance()._currentModel!.currentDetail = purchaseDetails;
+                await YKStoreKit._getInstance()._saveCache(YKStoreKit._getInstance()._currentModel!);
 
                 String orderId = purchaseDetails.productID;
-                String customerId = YKStoreKit
-                    ._getInstance()
-                    ._currentModel!
-                    .customId;
+                String customerId = YKStoreKit._getInstance()._currentModel!.customId;
                 String vantData = purchaseDetails.verificationData.serverVerificationData;
 
                 await YKStoreKit._getInstance()._disloading();
@@ -232,18 +206,14 @@ class YKStoreKit {
                 } else {
                   YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
                 }
+                YKStoreKit._getInstance()._currentComplete?.complete(isFinish);
               } else {
                 /// TODO: 购买成功，但是内存缓存中并没有当前订单信息，，，，，，，，，得排查原因
-                YKStoreKit
-                    ._getInstance()
-                    ._currentModel =
+                YKStoreKit._getInstance()._currentModel =
                     _YKStoreKitCurrentModel(orderId: purchaseDetails.productID, customId: purchaseDetails.transactionDate ?? "");
 
                 String orderId = purchaseDetails.productID;
-                String customerId = YKStoreKit
-                    ._getInstance()
-                    ._currentModel!
-                    .customId;
+                String customerId = YKStoreKit._getInstance()._currentModel!.customId;
                 String vantData = purchaseDetails.verificationData.serverVerificationData;
 
                 final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
@@ -253,18 +223,14 @@ class YKStoreKit {
                 } else {
                   YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
                 }
+                YKStoreKit._getInstance()._currentComplete?.complete(isFinish);
               }
             } catch (e) {
+              YKStoreKit._getInstance()._currentComplete?.complete(false);
               YKStoreKit._getInstance()._disloading();
               YKStoreKit._getInstance()._error(e.toString());
             } finally {
-              YKStoreKit
-                  ._getInstance()
-                  ._currentComplete
-                  ?.complete(true);
-              YKStoreKit
-                  ._getInstance()
-                  ._currentModel = null;
+              YKStoreKit._getInstance()._currentModel = null;
               YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
             }
           }
@@ -273,6 +239,8 @@ class YKStoreKit {
           if (purchaseDetails.pendingCompletePurchase) {
             //核销商品
             await InAppPurchase.instance.completePurchase(purchaseDetails);
+          } else {
+            await InAppPurchase.instance.restorePurchases();
           }
         }
       }
@@ -280,9 +248,7 @@ class YKStoreKit {
   }
 
   static setupDelegate({required YKStoreKitLogDelegate delegate}) {
-    YKStoreKit
-        ._getInstance()
-        ._delegate = delegate;
+    YKStoreKit._getInstance()._delegate = delegate;
   }
 
   static Future order({required String orderId, required String customerId}) {
