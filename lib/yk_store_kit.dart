@@ -130,6 +130,7 @@ class YKStoreKit {
   YKStoreKitLogDelegate? _delegate;
 
   _YKStoreKitCurrentModel? _currentModel;
+  Completer<bool>? _currentComplete;
 
   late StreamSubscription streamSubscription;
 
@@ -154,7 +155,6 @@ class YKStoreKit {
 
     final cacheModels = await YKStoreKit._getInstance()._getModels();
 
-
     for (final model in cacheModels) {
       String orderId = model.orderId;
       String customerId = model.customId;
@@ -175,7 +175,6 @@ class YKStoreKit {
     YKStoreKit
         ._getInstance()
         .streamSubscription = InAppPurchase.instance.purchaseStream.listen((event) async {
-
       for (final purchaseDetails in event) {
         if (purchaseDetails.status == PurchaseStatus.pending) {
           // 购买凭证创建中
@@ -185,9 +184,23 @@ class YKStoreKit {
           if (purchaseDetails.status == PurchaseStatus.error) {
             // 购买失败
             YKStoreKit._getInstance()._log(purchaseDetails.error?.message ?? "");
+            YKStoreKit
+                ._getInstance()
+                ._currentComplete
+                ?.complete(false);
+            YKStoreKit
+                ._getInstance()
+                ._currentModel = null;
           } else if (purchaseDetails.status == PurchaseStatus.canceled) {
             //取消
             YKStoreKit._getInstance()._log("支付已取消 ${purchaseDetails.productID}");
+            YKStoreKit
+                ._getInstance()
+                ._currentComplete
+                ?.complete(false);
+            YKStoreKit
+                ._getInstance()
+                ._currentModel = null;
           } else if (purchaseDetails.status == PurchaseStatus.purchased || purchaseDetails.status == PurchaseStatus.restored) {
             // 购买成功
 
@@ -203,37 +216,63 @@ class YKStoreKit {
                 await YKStoreKit._getInstance()._saveCache(YKStoreKit
                     ._getInstance()
                     ._currentModel!);
-              }
 
-              String orderId = purchaseDetails.productID;
-              String customerId = YKStoreKit
-                  ._getInstance()
-                  ._currentModel
-                  ?.customId ?? "";
-              String vantData = purchaseDetails.verificationData.serverVerificationData;
+                String orderId = purchaseDetails.productID;
+                String customerId = YKStoreKit
+                    ._getInstance()
+                    ._currentModel!
+                    .customId;
+                String vantData = purchaseDetails.verificationData.serverVerificationData;
 
-              await YKStoreKit._getInstance()._disloading();
-              final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
-              if (isFinish) {
-                YKStoreKit._getInstance()._deleteCache(orderId);
-                YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+                await YKStoreKit._getInstance()._disloading();
+                final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
+                if (isFinish) {
+                  YKStoreKit._getInstance()._deleteCache(orderId);
+                  YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+                } else {
+                  YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+                }
               } else {
-                YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+                /// TODO: 购买成功，但是内存缓存中并没有当前订单信息，，，，，，，，，得排查原因
+                YKStoreKit
+                    ._getInstance()
+                    ._currentModel =
+                    _YKStoreKitCurrentModel(orderId: purchaseDetails.productID, customId: purchaseDetails.transactionDate ?? "");
+
+                String orderId = purchaseDetails.productID;
+                String customerId = YKStoreKit
+                    ._getInstance()
+                    ._currentModel!
+                    .customId;
+                String vantData = purchaseDetails.verificationData.serverVerificationData;
+
+                final isFinish = await mainController.checkOrderCallBack(vantData, orderId, customerId);
+                if (isFinish) {
+                  YKStoreKit._getInstance()._deleteCache(orderId);
+                  YKStoreKit._getInstance()._log("支付完成:OrderId:$orderId, CustomerId:$customerId");
+                } else {
+                  YKStoreKit._getInstance()._error("支付未完成:OrderId:$orderId, CustomerId:$customerId");
+                }
               }
             } catch (e) {
               YKStoreKit._getInstance()._disloading();
               YKStoreKit._getInstance()._error(e.toString());
-            } finally {}
+            } finally {
+              YKStoreKit
+                  ._getInstance()
+                  ._currentComplete
+                  ?.complete(true);
+              YKStoreKit
+                  ._getInstance()
+                  ._currentModel = null;
+              YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
+            }
           }
 
           //MARK: 统一都做完成操作
           if (purchaseDetails.pendingCompletePurchase) {
             //核销商品
             await InAppPurchase.instance.completePurchase(purchaseDetails);
-            YKStoreKit
-                ._getInstance()
-                ._currentModel = null;
-            YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
           }
         }
       }
@@ -241,15 +280,17 @@ class YKStoreKit {
   }
 
   static setupDelegate({required YKStoreKitLogDelegate delegate}) {
-    YKStoreKit._getInstance()._delegate = delegate;
+    YKStoreKit
+        ._getInstance()
+        ._delegate = delegate;
   }
 
-  static order({required String orderId, required String customerId}) {
-    YKStoreKit._getInstance()._order(orderId, customerId, false);
+  static Future order({required String orderId, required String customerId}) {
+    return YKStoreKit._getInstance()._order(orderId, customerId, false);
   }
 
-  static subscriptionOrder({required String subscriptionOrderId, required String customerId}) async {
-    YKStoreKit._getInstance()._order(subscriptionOrderId, customerId, true);
+  static Future subscriptionOrder({required String subscriptionOrderId, required String customerId}) async {
+    return YKStoreKit._getInstance()._order(subscriptionOrderId, customerId, true);
   }
 
   static Future<List<YKStorePayDetail>> getDetail(List<String> orderIds) async {
@@ -276,7 +317,7 @@ class YKStoreKit {
     return InAppReview.instance.requestReview();
   }
 
-  _order(String orderId, String customerId, bool isNon) async {
+  Future _order(String orderId, String customerId, bool isNon) async {
     if (_currentModel != null) {
       if (_delegate?.errorCallBack != null) {
         _delegate?.errorCallBack!("上一单支付还未完成");
@@ -285,6 +326,8 @@ class YKStoreKit {
     }
 
     _loading();
+    _currentComplete = null;
+    _currentComplete = Completer<bool>();
     try {
       Set<String> kIds = <String>{orderId};
       final ProductDetailsResponse response = await InAppPurchase.instance.queryProductDetails(kIds);
@@ -303,19 +346,23 @@ class YKStoreKit {
           _currentModel = _YKStoreKitCurrentModel(orderId: orderId, customId: customerId);
           final PurchaseParam purchaseParam = PurchaseParam(productDetails: currentDetail!);
           if (isNon) {
-            InAppPurchase.instance.buyNonConsumable(purchaseParam: purchaseParam);
+            await InAppPurchase.instance.buyNonConsumable(purchaseParam: purchaseParam);
           } else {
-            InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
+            await InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
           }
         } else {
           _error("找不到付费点");
+          _currentComplete?.complete(false);
         }
       } else {
         _error(response.error!.message);
+        _currentComplete?.complete(false);
       }
     } catch (e) {
       _error("产生支付错误 ${e.toString()}");
+      _currentComplete?.complete(false);
     }
+    return _currentComplete?.future ?? Future.value(false);
   }
 
   _log(String message) {
