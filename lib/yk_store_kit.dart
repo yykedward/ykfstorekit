@@ -230,6 +230,7 @@ class YKStoreKit {
               YKStoreKit._getInstance()._log("已完成: ${purchaseDetails.productID}");
             }
           } else if (purchaseDetails.status == PurchaseStatus.restored) {
+            /// 订阅
             try {
               _YKStoreKitCurrentModel? useModel = YKStoreKit._getInstance()._currentModel;
               if (useModel == null) {
@@ -264,11 +265,11 @@ class YKStoreKit {
               YKStoreKit._getInstance()._log("已恢复完成: ${purchaseDetails.productID}");
             }
           }
-
           //MARK: 统一都做完成操作
           if (purchaseDetails.pendingCompletePurchase) {
             await InAppPurchase.instance.completePurchase(purchaseDetails);
           }
+          YKStoreKit._getInstance()._disloading();
         }
       }
     });
@@ -282,9 +283,10 @@ class YKStoreKit {
     return YKStoreKit._getInstance()._order(orderId, customerId, false);
   }
 
-  static Future subscriptionOrder({required String subscriptionOrderId, required String customerId}) async {
-    return YKStoreKit._getInstance()._order(subscriptionOrderId, customerId, true);
-  }
+  /// 正在维护，暂停使用
+  // static Future subscriptionOrder({required String subscriptionOrderId, required String customerId}) async {
+  //   return YKStoreKit._getInstance()._order(subscriptionOrderId, customerId, true);
+  // }
 
   static Future<List<YKStorePayDetail>> getDetail(List<String> orderIds) async {
     Set<String> kIds = <String>{};
@@ -354,6 +356,7 @@ class YKStoreKit {
     } catch (e) {
       _error("产生支付错误 ${e.toString()}");
       _currentComplete?.complete(false);
+      _currentModel = null;
     }
     return _currentComplete?.future ?? Future.value(false);
   }
