@@ -339,21 +339,24 @@ class YKStoreKit {
         if (currentDetail != null) {
           // 找到支付点：开启支付
           _currentModel = _YKStoreKitCurrentModel(orderId: orderId, customId: customerId);
-          final PurchaseParam purchaseParam = PurchaseParam(productDetails: currentDetail!);
+          final PurchaseParam purchaseParam = PurchaseParam(productDetails: currentDetail);
           if (isNon) {
             await InAppPurchase.instance.buyNonConsumable(purchaseParam: purchaseParam);
           } else {
             await InAppPurchase.instance.buyConsumable(purchaseParam: purchaseParam);
           }
         } else {
+          _disloading();
           _error("找不到付费点");
           _currentComplete?.complete(false);
         }
       } else {
+        _disloading();
         _error(response.error!.message);
         _currentComplete?.complete(false);
       }
     } catch (e) {
+      _disloading();
       _error("产生支付错误 ${e.toString()}");
       _currentComplete?.complete(false);
       _currentModel = null;
